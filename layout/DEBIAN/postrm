@@ -1,0 +1,21 @@
+#!/bin/sh
+
+# Ask supported GUI package managers (including Sileo) to present their normal
+# Restart SpringBoard finish action after package removal completes.
+finish() {
+	finish_state="$1"
+
+	[ -z "$finish_state" ] || [ -z "$CYDIA" ] && return
+	read -r control_fd protocol_version <<EOF
+$CYDIA
+EOF
+	[ "$protocol_version" -ge 1 ] 2>/dev/null || return
+	printf 'finish:%s\n' "$finish_state" >&$control_fd
+}
+
+case "$1" in
+	remove|purge)
+		finish restart
+		;;
+esac
+exit 0
