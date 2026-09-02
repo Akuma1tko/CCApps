@@ -3,7 +3,9 @@
 CCApps adds installed applications as individual Control Center modules. Tap a
 module to open its app.
 
-![CCApps running in Control Center](CCApps-Control-Center.jpg)
+<p align="center">
+  <img src="CCApps-Control-Center.jpg" alt="CCApps running in Control Center" width="320">
+</p>
 
 I made this because I got an iOS 17 jailbroken device and could not find a
 Control Center app launcher that worked on my setup. iOS 17 tweak support is
