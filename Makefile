@@ -15,7 +15,8 @@ CCAppsProvider_FILES = \
 	Shared/CCAppsApplication.m \
 	Shared/CCAppsAppCatalog.m \
 	Shared/CCAppsIconLoader.m \
-	Shared/CCAppsLauncher.m
+	Shared/CCAppsLauncher.m \
+	Shared/CCAppsQuickActions.m
 CCAppsProvider_CFLAGS = -fobjc-arc -Wall -Wextra
 CCAppsProvider_FRAMEWORKS = UIKit
 CCAppsProvider_PRIVATE_FRAMEWORKS = ControlCenterUIKit FrontBoardServices MobileCoreServices

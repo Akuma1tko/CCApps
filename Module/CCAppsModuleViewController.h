@@ -3,7 +3,7 @@
 
 @class CCUIContentModuleContext;
 
-@interface CCAppsModuleViewController : UIViewController <CCUIContentModuleContentViewController>
+@interface CCAppsModuleViewController : UIViewController <CCUIContentModuleContentViewController, UIContextMenuInteractionDelegate>
 
 @property (nonatomic, strong) CCUIContentModuleContext *contentModuleContext;
 

@@ -3,14 +3,16 @@
 #import "CCAppsContentModuleContext.h"
 #import "../Shared/CCAppsIconLoader.h"
 #import "../Shared/CCAppsLauncher.h"
+#import "../Shared/CCAppsQuickActions.h"
 
 static const CGFloat CCAppsIconNormalAlpha = 0.65;
-static const CGFloat CCAppsIconPressedAlpha = 0.40;
+static const CGFloat CCAppsIconPressedScale = 0.92;
 
 @interface CCAppsModuleViewController ()
 @property (nonatomic, copy) NSString *bundleIdentifier;
 @property (nonatomic, copy) NSString *displayName;
 @property (nonatomic, strong) UIImageView *iconView;
+@property (nonatomic, strong) id pendingQuickAction;
 @end
 
 @implementation CCAppsModuleViewController
@@ -53,11 +55,15 @@ static const CGFloat CCAppsIconPressedAlpha = 0.40;
     button.translatesAutoresizingMaskIntoConstraints = NO;
     button.backgroundColor = UIColor.clearColor;
     button.accessibilityLabel = self.displayName;
-    button.accessibilityHint = @"Opens application";
+    button.accessibilityHint = @"Opens application. Touch and hold for quick actions.";
     [button addTarget:self action:@selector(buttonTouchDown:) forControlEvents:UIControlEventTouchDown];
     [button addTarget:self action:@selector(buttonTouchEnded:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
     [button addTarget:self action:@selector(buttonTapped:) forControlEvents:UIControlEventTouchUpInside];
     [self.view addSubview:button];
+
+    UIContextMenuInteraction *contextMenu =
+        [[UIContextMenuInteraction alloc] initWithDelegate:self];
+    [button addInteraction:contextMenu];
 
     [NSLayoutConstraint activateConstraints:@[
         [iconView.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
@@ -71,12 +77,137 @@ static const CGFloat CCAppsIconPressedAlpha = 0.40;
     ]];
 }
 
+- (UIContextMenuConfiguration *)contextMenuInteraction:(__unused UIContextMenuInteraction *)interaction
+                        configurationForMenuAtLocation:(__unused CGPoint)location {
+    NSArray *shortcutItems = CCAppsQuickActionsForBundleIdentifier(self.bundleIdentifier);
+    if (shortcutItems.count == 0) return nil;
+
+    NSString *bundleIdentifier = self.bundleIdentifier;
+    __weak typeof(self) weakSelf = self;
+    return [UIContextMenuConfiguration configurationWithIdentifier:nil
+                                                   previewProvider:nil
+                                                    actionProvider:^UIMenu *(NSArray<UIMenuElement *> *suggestedActions) {
+        (void)suggestedActions;
+        NSMutableArray<UIMenuElement *> *actions =
+            [NSMutableArray arrayWithCapacity:shortcutItems.count];
+        for (id shortcutItem in shortcutItems) {
+            NSString *title = [shortcutItem localizedTitle];
+            UIImage *image = CCAppsQuickActionIcon(shortcutItem, bundleIdentifier);
+            UIAction *action = [UIAction actionWithTitle:title
+                                                   image:image
+                                              identifier:nil
+                                                 handler:^(__unused UIAction *selectedAction) {
+                [weakSelf queueQuickActionUntilMenuDismisses:shortcutItem];
+            }];
+            [actions addObject:action];
+        }
+        return [UIMenu menuWithTitle:@"" children:actions];
+    }];
+}
+
+- (UITargetedPreview *)contextMenuInteraction:(__unused UIContextMenuInteraction *)interaction
+   previewForHighlightingMenuWithConfiguration:(__unused UIContextMenuConfiguration *)configuration {
+    UIPreviewParameters *parameters = [[UIPreviewParameters alloc] init];
+    parameters.backgroundColor = UIColor.clearColor;
+    parameters.visiblePath = [UIBezierPath bezierPathWithRoundedRect:self.iconView.bounds
+                                                        cornerRadius:self.iconView.layer.cornerRadius];
+    return [[UITargetedPreview alloc] initWithView:self.iconView parameters:parameters];
+}
+
+- (UITargetedPreview *)contextMenuInteraction:(__unused UIContextMenuInteraction *)interaction
+     previewForDismissingMenuWithConfiguration:(UIContextMenuConfiguration *)configuration {
+    return [self contextMenuInteraction:interaction
+        previewForHighlightingMenuWithConfiguration:configuration];
+}
+
+- (void)contextMenuInteraction:(__unused UIContextMenuInteraction *)interaction
+       willDisplayMenuForConfiguration:(__unused UIContextMenuConfiguration *)configuration
+                              animator:(__unused id<UIContextMenuInteractionAnimating>)animator {
+    self.iconView.alpha = CCAppsIconNormalAlpha;
+    self.iconView.transform = CGAffineTransformIdentity;
+}
+
+- (void)contextMenuInteraction:(__unused UIContextMenuInteraction *)interaction
+         willEndForConfiguration:(__unused UIContextMenuConfiguration *)configuration
+                         animator:(id<UIContextMenuInteractionAnimating>)animator {
+    __weak typeof(self) weakSelf = self;
+    [animator addCompletion:^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+
+        strongSelf.iconView.alpha = CCAppsIconNormalAlpha;
+        strongSelf.iconView.transform = CGAffineTransformIdentity;
+
+        id shortcutItem = strongSelf.pendingQuickAction;
+        strongSelf.pendingQuickAction = nil;
+        if (shortcutItem) {
+            // Authentication presentation is ignored if requested while the
+            // context menu still owns Control Center's presentation context.
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [strongSelf performQuickAction:shortcutItem];
+            });
+        }
+    }];
+}
+
+- (void)queueQuickActionUntilMenuDismisses:(id)shortcutItem {
+    if (!shortcutItem) return;
+    self.pendingQuickAction = shortcutItem;
+
+    // Defensive fallback in case UIKit omits the dismissal callback.
+    __weak typeof(self) weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf || strongSelf.pendingQuickAction != shortcutItem) return;
+        strongSelf.pendingQuickAction = nil;
+        [strongSelf performQuickAction:shortcutItem];
+    });
+}
+
+- (void)performQuickAction:(id)shortcutItem {
+    if (!shortcutItem) return;
+
+    CCUIContentModuleContext *context = self.contentModuleContext;
+    if (!context ||
+        ![context respondsToSelector:@selector(requestAuthenticationWithCompletionHandler:)]) {
+        CCAppsLaunchQuickAction(shortcutItem, self.bundleIdentifier);
+        return;
+    }
+
+    NSString *bundleIdentifier = self.bundleIdentifier;
+    __weak typeof(self) weakSelf = self;
+    [context requestAuthenticationWithCompletionHandler:^(BOOL authenticated) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (!strongSelf || !authenticated) return;
+            CCAppsLaunchQuickAction(shortcutItem, bundleIdentifier);
+        });
+    }];
+}
+
 - (void)buttonTouchDown:(__unused UIButton *)button {
-    self.iconView.alpha = CCAppsIconPressedAlpha;
+    [UIView animateWithDuration:0.16
+                          delay:0.0
+                        options:UIViewAnimationOptionBeginFromCurrentState |
+                                UIViewAnimationOptionAllowUserInteraction |
+                                UIViewAnimationOptionCurveEaseOut
+                     animations:^{
+        self.iconView.transform = CGAffineTransformMakeScale(CCAppsIconPressedScale,
+                                                              CCAppsIconPressedScale);
+    } completion:nil];
 }
 
 - (void)buttonTouchEnded:(__unused UIButton *)button {
-    self.iconView.alpha = CCAppsIconNormalAlpha;
+    [UIView animateWithDuration:0.20
+                          delay:0.0
+         usingSpringWithDamping:0.72
+          initialSpringVelocity:0.0
+                        options:UIViewAnimationOptionBeginFromCurrentState |
+                                UIViewAnimationOptionAllowUserInteraction
+                     animations:^{
+        self.iconView.transform = CGAffineTransformIdentity;
+    } completion:nil];
 }
 
 - (void)buttonTapped:(__unused UIButton *)button {

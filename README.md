@@ -1,7 +1,7 @@
 # CCApps
 
 CCApps adds installed applications as individual Control Center modules. Tap a
-module to open its app.
+module to open its app, or touch and hold it for the app's quick actions.
 
 <p align="center">
   <img src="CCApps-Control-Center.jpg" alt="CCApps running in Control Center" width="320">
@@ -21,6 +21,7 @@ requests are welcome, but they may not be addressed.
 - Discovers installed user and system applications automatically.
 - Adds each launchable app to Settings > Control Center by name.
 - Uses the installed app's full-color icon in Control Center.
+- Shows app-provided Home Screen quick actions when a module is held.
 - Requests Face ID or passcode before launching from a locked phone.
 - Requests a SpringBoard restart after installation and removal in Sileo.
 
@@ -39,14 +40,14 @@ Other devices and configurations may behave differently.
 
 ## Install
 
-Install `com.akuma.ccapps_1.0_iphoneos-arm64.deb` through Sileo, then use its
+Install `com.akuma.ccapps_1.1_iphoneos-arm64.deb` through Sileo, then use its
 Restart SpringBoard action. Installed applications should appear individually
 under Settings > Control Center > More Controls.
 
 For a terminal installation on the phone:
 
 ```sh
-sudo dpkg -i /path/to/com.akuma.ccapps_1.0_iphoneos-arm64.deb
+sudo dpkg -i /path/to/com.akuma.ccapps_1.1_iphoneos-arm64.deb
 sudo sbreload
 ```
 
